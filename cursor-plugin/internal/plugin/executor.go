@@ -190,6 +190,9 @@ func decodeExecution(raw []byte) (executorRequest, openai.ChatRequest, cursoraut
 			Message: fmt.Sprintf("Cursor model %q is disabled by plugin configuration", chat.Model),
 		}
 	}
+	if err := chat.ValidateToolProgress(credentials.ToolLoopGuardTools); err != nil {
+		return executorRequest{}, openai.ChatRequest{}, cursorauth.Credentials{}, err
+	}
 	return request, chat, credentials, nil
 }
 

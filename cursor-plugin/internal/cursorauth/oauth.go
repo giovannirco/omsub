@@ -45,13 +45,14 @@ const (
 )
 
 type Credentials struct {
-	AccessToken    string    `json:"access_token"`
-	RefreshToken   string    `json:"refresh_token"`
-	ExpiresAt      time.Time `json:"expires_at"`
-	AccountID      string    `json:"account_id,omitempty"`
-	Email          string    `json:"email,omitempty"`
-	Type           string    `json:"type"`
-	DisabledModels []string  `json:"disabled_models,omitempty"`
+	AccessToken        string    `json:"access_token"`
+	RefreshToken       string    `json:"refresh_token"`
+	ExpiresAt          time.Time `json:"expires_at"`
+	AccountID          string    `json:"account_id,omitempty"`
+	Email              string    `json:"email,omitempty"`
+	Type               string    `json:"type"`
+	DisabledModels     []string  `json:"disabled_models,omitempty"`
+	ToolLoopGuardTools []string  `json:"tool_loop_guard_tools,omitempty"`
 }
 
 type PollResult struct {

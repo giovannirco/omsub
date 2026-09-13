@@ -41,5 +41,6 @@ func (service *Service) Refresh(ctx context.Context, current Credentials) (Crede
 		return Credentials{}, err
 	}
 	refreshed.DisabledModels = append([]string(nil), current.DisabledModels...)
+	refreshed.ToolLoopGuardTools = append([]string(nil), current.ToolLoopGuardTools...)
 	return refreshed, nil
 }
