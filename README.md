@@ -2,7 +2,13 @@
 
 `cursor` 分支用于发布可独立安装的 CPA/CLIProxyAPI Cursor 插件。插件直接作为 CLIProxyAPI 原生动态库运行，不需要安装或启动 opencodex 服务，也不修改 CPA Manager Plus 或 CLIProxyAPI 源码。
 
-## 获取与安装
+## 当前源码版本
+
+当前源码版本为 **0.6.1**，包含可选工具循环防护、等价文本分块的检查点复用和增量历史摘要。硬停止默认关闭；缓存优化不会去重或跳过实际工具执行。完整变更与限制见 [0.6.1 版本说明](cursor-plugin/docs/releases/v0.6.1.md)。
+
+源码版本更新不等于 GitHub Release 发布或现网升级。以下下载链接仍指向已发布的 v0.5.10；0.6.1 发布包须另行构建和发布。
+
+## 获取已发布版本与安装
 
 - [GitHub Releases](https://github.com/yobo2u/omsub/releases/tag/v0.5.10)
 - [Linux amd64 发布包](https://github.com/yobo2u/omsub/releases/download/v0.5.10/cursor-plugin-0.5.10-linux-amd64.tar.gz)
@@ -15,7 +21,7 @@ GitHub Release 同时提供符合 CLIProxyAPI 官方插件商店格式的
 `cursor.so`；TAR 包继续用于手动安装。
 发布物校验值见同一 Release 中的 `checksums.txt`。
 
-v0.5.10 修复 Grok 4.6 原生工具未应答导致的传输超时，以及工具结果续轮时重复输出或重复调用工具的问题；同时补齐 Cursor Agent 图片生成协议，图片通过 `message.images` / `delta.images` 返回。客户端需要支持该图片扩展。完整变更与升级说明见[发布说明](cursor-plugin/docs/releases/v0.5.10.md)。
+此前发布的 v0.5.10 修复 Grok 4.6 原生工具未应答导致的传输超时，以及工具结果续轮时重复输出或重复调用工具的问题；同时补齐 Cursor Agent 图片生成协议，图片通过 `message.images` / `delta.images` 返回。客户端需要支持该图片扩展。历史变更与升级说明见[发布说明](cursor-plugin/docs/releases/v0.5.10.md)。
 
 插件支持 OpenAI Chat Completions 文本请求、非流式响应、SSE 流式响应、标准 function tools（包括多工具调用和结果续轮），以及内联图片和图片或 UTF-8 文本附件。工具调用 ID 稳定、单行且不超过 64 字节，成功但真正为空的 assistant 响应会明确失败。插件还提供 Cursor 管理页、账户去重、单账户“全部禁用 / Disable all”、模型禁用及本地请求和 Token 估算。Cursor 未公开稳定的 OAuth 订阅剩余额度接口，因此插件明确显示额度不可用；Responses API 仍不由插件直接实现。
 

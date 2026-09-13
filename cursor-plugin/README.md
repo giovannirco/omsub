@@ -5,7 +5,11 @@
 > [!IMPORTANT]
 > 本项目是非官方社区插件，与 Cursor、Anysphere、CLIProxyAPI、CPA Manager Plus 或 opencodex 无隶属或授权关系。使用前请完整阅读[免责声明](DISCLAIMER.md)，并自行确认符合适用法律、服务条款及订阅限制。
 
-## 已验证环境
+## 当前源码版本
+
+当前源码版本为 **0.6.1**，变更见[版本说明](docs/releases/v0.6.1.md)。更新源码或打包版本不会自动发布 GitHub Release、升级已运行插件或启用账户策略。以下 0.6.1 包名用于本地构建或对应 Release 发布后的安装；已发布版本下载入口见[仓库首页](https://github.com/yobo2u/omsub/tree/cursor)。
+
+## 已验证宿主环境
 
 - CLIProxyAPI `v7.2.154`，提交 `ba7e558`
 - CPA Manager Plus `v1.12.10`
@@ -21,10 +25,10 @@
 `cursor` 安装。商店会从最新的 `v<version>` GitHub Release 下载当前平台 ZIP，
 并用同一 Release 中的 `checksums.txt` 校验文件。
 
-当前商店发布物仅支持 Linux amd64：
+0.6.1 商店格式包仅面向 Linux amd64：
 
 ```text
-cursor_0.5.10_linux_amd64.zip
+cursor_0.6.1_linux_amd64.zip
 checksums.txt
 ```
 
@@ -33,8 +37,8 @@ checksums.txt
 解压发布包，然后把 `--plugins-dir` 指向 CLIProxyAPI 配置中的 `plugins.dir`：
 
 ```sh
-tar -xzf cursor-plugin-0.5.10-linux-amd64.tar.gz
-cd cursor-plugin-0.5.10-linux-amd64
+tar -xzf cursor-plugin-0.6.1-linux-amd64.tar.gz
+cd cursor-plugin-0.6.1-linux-amd64
 sudo ./install.sh --plugins-dir /opt/cpa-manager-plus/cliproxyapi/plugins
 ```
 
@@ -94,6 +98,7 @@ sudo ./uninstall.sh --plugins-dir /opt/cpa-manager-plus/cliproxyapi/plugins
 
 ## 能力与边界
 
+- 0.6.1 的可选工具循环防护、检查点命中优化和增量摘要说明见[行为与验收说明](docs/cursor-tool-loop-and-cache.md)。硬停止默认关闭，仅对账户认证 JSON 中 `tool_loop_guard_tools` 精确列出的工具启用；本版本不会自动修改账户策略，也不保证消除所有重复操作。
 - v0.5.10 的修复和升级说明见[发布说明](docs/releases/v0.5.10.md)。原生 grep/read/shell 请求会收到完整的不可执行协议回复，由客户端已公开的工具完成实际操作；网关不会执行这些原生文件读取或命令。
 - 工具结果续轮会明确标记已完成的结果，帮助 Agent 继续回答，避免重复前言或再次发出已完成的工具调用。已有 OpenCode 会话中保存的重复内容不会被自动修改。
 - 支持 OpenAI `chat-completions` 文本消息、非流式和 SSE 流式响应，并兼容 OpenCode 发送的 `max_tokens`、`stream_options` 等扩展字段。
