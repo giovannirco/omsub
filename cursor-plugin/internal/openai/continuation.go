@@ -1,6 +1,9 @@
 package openai
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"strings"
 )
@@ -54,12 +57,20 @@ func appendToolResultContinuation(history []string, transcript []Message) []stri
 }
 
 func (request ChatRequest) LineageWithAssistant(text string) Lineage {
-	transcript := append([]Message(nil), request.Transcript...)
-	transcript = append(transcript, Message{
+	message := Message{
 		Role:    RoleAssistant,
 		Content: []ContentPart{{Kind: ContentText, Text: text}},
-	})
-	return buildLineage(request.Model, request.Tools, transcript)
+	}
+	encoded, _ := json.Marshal(canonicalizeMessage(message))
+	step := sha256.New()
+	step.Write(request.Lineage.tail[:])
+	step.Write(encoded)
+	next := request.Lineage
+	copy(next.tail[:], step.Sum(nil))
+	next.PrefixDigests = make([]Digest, len(request.Lineage.PrefixDigests)+1)
+	copy(next.PrefixDigests, request.Lineage.PrefixDigests)
+	next.PrefixDigests[len(request.Lineage.PrefixDigests)] = Digest(hex.EncodeToString(next.tail[:]))
+	return next
 }
 
 func messageContent(parts []ContentPart) (string, []Image, []Attachment) {

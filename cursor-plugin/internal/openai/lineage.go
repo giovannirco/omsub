@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"io"
+	"strings"
 )
 
 type Role string
@@ -52,6 +53,7 @@ type Digest string
 type Lineage struct {
 	SystemDigest  Digest
 	PrefixDigests []Digest
+	tail          [sha256.Size]byte
 }
 
 type canonicalContent struct {
@@ -109,24 +111,30 @@ func buildLineage(model string, tools []Tool, transcript []Message) Lineage {
 		prefixDigests = append(prefixDigests, Digest(hex.EncodeToString(prefix[:])))
 	}
 	return Lineage{
-		SystemDigest: Digest(hex.EncodeToString(systemHash.Sum(nil))), PrefixDigests: prefixDigests,
+		SystemDigest: Digest(hex.EncodeToString(systemHash.Sum(nil))), PrefixDigests: prefixDigests, tail: prefix,
 	}
 }
 
 func canonicalizeMessage(message Message) canonicalMessage {
-	content := make([]canonicalContent, len(message.Content))
-	for index, part := range message.Content {
+	content := make([]canonicalContent, 0, len(message.Content))
+	for index := 0; index < len(message.Content); index++ {
+		part := message.Content[index]
 		switch part.Kind {
 		case ContentText:
-			content[index] = canonicalContent{Kind: part.Kind, Text: part.Text}
+			texts := []string{part.Text}
+			for index+1 < len(message.Content) && message.Content[index+1].Kind == ContentText {
+				index++
+				texts = append(texts, message.Content[index].Text)
+			}
+			content = append(content, canonicalContent{Kind: part.Kind, Text: strings.Join(texts, "\n")})
 		case ContentImage:
-			content[index] = canonicalContent{
+			content = append(content, canonicalContent{
 				Kind: part.Kind, Name: part.Image.Name, MIMEType: part.Image.MIMEType, DataDigest: digestBytes(part.Image.Data),
-			}
+			})
 		case ContentAttachment:
-			content[index] = canonicalContent{
+			content = append(content, canonicalContent{
 				Kind: part.Kind, Name: part.Attachment.Name, DataDigest: digestBytes([]byte(part.Attachment.Content)),
-			}
+			})
 		}
 	}
 	toolCalls := make([]canonicalToolCall, len(message.ToolCalls))
