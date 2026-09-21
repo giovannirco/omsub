@@ -8,10 +8,11 @@ import (
 	"strings"
 	"time"
 
+	"cursorplugin/internal/cursorapi"
 	"cursorplugin/internal/cursorauth"
 )
 
-const quotaUnavailableReason = "Cursor does not publish a subscription remaining-quota API"
+const quotaClientMissingReason = "Cursor usage client is not configured"
 
 type hostAuthFile struct {
 	ID            string `json:"id"`
@@ -52,9 +53,21 @@ type cursorModelStatus struct {
 	Disabled bool   `json:"disabled"`
 }
 
+type periodUsageClient interface {
+	CurrentPeriodUsage(context.Context, string) (cursorapi.PeriodUsage, error)
+}
+
 type cursorQuotaStatus struct {
-	Status string `json:"status"`
-	Reason string `json:"reason"`
+	Status              string   `json:"status"`
+	Reason              string   `json:"reason,omitempty"`
+	PlanName            string   `json:"plan_name,omitempty"`
+	IncludedPercentUsed *float64 `json:"included_percent_used,omitempty"`
+	AutoPercentUsed     *float64 `json:"auto_percent_used,omitempty"`
+	APIPercentUsed      *float64 `json:"api_percent_used,omitempty"`
+	ResetsAt            string   `json:"resets_at,omitempty"`
+	OnDemandKind        string   `json:"on_demand_kind,omitempty"`
+	OnDemandUsedCents   *int64   `json:"on_demand_used_cents,omitempty"`
+	OnDemandLimitCents  *int64   `json:"on_demand_limit_cents,omitempty"`
 }
 
 type cursorAccountStatus struct {
@@ -151,7 +164,7 @@ func (handler *Handler) managementStatus(ctx context.Context) (managementRespons
 				Label:             record.file.Label,
 				Status:            "unavailable: " + accountErr.Error(),
 				HostRuntime:       cursorHostRuntime(record.file),
-				SubscriptionQuota: cursorQuotaStatus{Status: "unavailable", Reason: quotaUnavailableReason},
+				SubscriptionQuota: cursorQuotaStatus{Status: "unavailable", Reason: quotaClientMissingReason},
 				LocalUsage:        handler.usage.snapshot(metricKey),
 				CheckpointMetrics: handler.usage.checkpoints.snapshot(metricKey),
 				Models:            []cursorModelStatus{},
@@ -200,11 +213,43 @@ func (handler *Handler) cursorAccountStatusWithCredential(ctx context.Context, f
 		Label:             file.Label,
 		Status:            cursorPluginStatus(file.Status, localUsage.LastOutcome),
 		HostRuntime:       cursorHostRuntime(file),
-		SubscriptionQuota: cursorQuotaStatus{Status: "unavailable", Reason: quotaUnavailableReason},
+		SubscriptionQuota: handler.subscriptionQuota(ctx, credential.AccessToken),
 		LocalUsage:        localUsage,
 		CheckpointMetrics: handler.usage.checkpoints.snapshot(metricKey),
 		Models:            items,
 	}, nil
+}
+
+func (handler *Handler) subscriptionQuota(ctx context.Context, accessToken string) cursorQuotaStatus {
+	reader, ok := handler.cursor.(periodUsageClient)
+	if !ok {
+		return cursorQuotaStatus{Status: "unavailable", Reason: quotaClientMissingReason}
+	}
+	usage, err := reader.CurrentPeriodUsage(ctx, accessToken)
+	if err != nil {
+		return cursorQuotaStatus{Status: "unavailable", Reason: err.Error()}
+	}
+	included := usage.IncludedPercentUsed
+	autoPercent := usage.AutoPercentUsed
+	apiPercent := usage.APIPercentUsed
+	usedCents := usage.OnDemandUsedCents
+	status := cursorQuotaStatus{
+		Status:              "available",
+		PlanName:            usage.PlanName,
+		IncludedPercentUsed: &included,
+		AutoPercentUsed:     &autoPercent,
+		APIPercentUsed:      &apiPercent,
+		OnDemandKind:        usage.OnDemandKind,
+		OnDemandUsedCents:   &usedCents,
+	}
+	if !usage.BillingCycleEnd.IsZero() {
+		status.ResetsAt = usage.BillingCycleEnd.UTC().Format(time.RFC3339)
+	}
+	if usage.HasOnDemandLimit {
+		limitCents := usage.OnDemandLimitCents
+		status.OnDemandLimitCents = &limitCents
+	}
+	return status
 }
 
 func cursorMetricKey(file hostAuthFile) string {
