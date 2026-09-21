@@ -115,7 +115,7 @@ func registration() map[string]any {
 		"schema_version": 3,
 		"metadata": map[string]any{
 			"Name":             "cursor",
-			"Version":          "0.6.2",
+			"Version":          "0.6.3",
 			"Author":           "giovannirco",
 			"GitHubRepository": "https://github.com/giovannirco/omsub",
 			"Logo":             "",

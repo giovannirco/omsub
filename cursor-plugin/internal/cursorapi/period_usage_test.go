@@ -28,6 +28,8 @@ func Test_Client_CurrentPeriodUsage_reads_dashboard_period_plan_and_limit(t *tes
 			_, _ = response.Write([]byte(`{"planInfo":{"planName":"Pro","billingCycleEnd":"1712592000000"}}`))
 		case "/aiserver.v1.DashboardService/GetHardLimit":
 			_, _ = response.Write([]byte(`{"hardLimit":20,"noUsageBasedAllowed":false}`))
+		case "/aiserver.v1.DashboardService/GetSandUsageStatus":
+			_, _ = response.Write([]byte(`{"currentPeriodStart":"2026-09-15T20:23:06.799Z","nextResetTimestampUtc":"2026-09-22T20:23:06.799Z","usagePercent":6.93,"grokPlanLabel":"Grok Bot Plan"}`))
 		default:
 			http.NotFound(response, request)
 		}
@@ -43,15 +45,23 @@ func Test_Client_CurrentPeriodUsage_reads_dashboard_period_plan_and_limit(t *tes
 		"/aiserver.v1.DashboardService/GetCurrentPeriodUsage",
 		"/aiserver.v1.DashboardService/GetPlanInfo",
 		"/aiserver.v1.DashboardService/GetHardLimit",
+		"/aiserver.v1.DashboardService/GetSandUsageStatus",
 	}, methods)
 	require.Equal(t, "Pro", usage.PlanName)
 	require.Equal(t, 40.0, usage.IncludedPercentUsed)
 	require.Equal(t, 10.0, usage.AutoPercentUsed)
 	require.Equal(t, 30.0, usage.APIPercentUsed)
+	require.True(t, usage.HasIncludedSpend)
+	require.EqualValues(t, 800, usage.IncludedSpendCents)
+	require.EqualValues(t, 2000, usage.IncludedLimitCents)
 	require.Equal(t, time.UnixMilli(1712592000000).UTC(), usage.BillingCycleEnd)
 	require.Equal(t, "fixed", usage.OnDemandKind)
 	require.EqualValues(t, 250, usage.OnDemandUsedCents)
 	require.EqualValues(t, 2000, usage.OnDemandLimitCents)
+	require.True(t, usage.HasGrokBotPercent)
+	require.Equal(t, 6.93, usage.GrokBotPercentUsed)
+	require.Equal(t, "Grok Bot Plan", usage.GrokBotLabel)
+	require.Equal(t, time.Date(2026, 9, 22, 20, 23, 6, 799000000, time.UTC), usage.GrokBotResetsAt)
 }
 
 func Test_Client_CurrentPeriodUsage_rejects_non_success_dashboard_status(t *testing.T) {
