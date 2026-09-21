@@ -184,8 +184,13 @@
           quotaIncluded: "已用套餐",
           quotaAuto: "Auto 已用",
           quotaApi: "API 已用",
+          cursorModels: "Cursor 模型",
+          otherModels: "其他模型",
+          grokBot: "Grok Bot",
+          grokBotReset: "Grok Bot 重置",
           quotaReset: "重置时间",
           quotaOnDemand: "按量付费",
+          onDemandDisabled: "已关闭",
           managementKeyLabel: "管理密钥",
           keyHelp: "只保留在当前页面内存中，不写入浏览器存储。",
           loadStatus: "加载状态",
@@ -251,8 +256,13 @@
           quotaIncluded: "Included used",
           quotaAuto: "Auto used",
           quotaApi: "API used",
+          cursorModels: "Cursor Models",
+          otherModels: "Other Models",
+          grokBot: "Grok Bot",
+          grokBotReset: "Grok Bot resets",
           quotaReset: "Resets",
           quotaOnDemand: "On-demand",
+          onDemandDisabled: "Disabled",
           managementKeyLabel: "management key",
           keyHelp: "Kept only in this page's memory and never written to browser storage.",
           loadStatus: "Load status",
@@ -444,10 +454,16 @@
         return typeof value === "number" ? `${value.toFixed(1)}%` : translate("unknown");
       }
 
+      function formatUsed(value) {
+        if (typeof value !== "number") return translate("unknown");
+        if (value > 0 && value < 1) return "1%";
+        return `${Math.round(value)}%`;
+      }
+
       function formatOnDemand(quota) {
         if (!quota || quota.status !== "available") return quota?.reason || translate("unavailable");
         const used = typeof quota.on_demand_used_cents === "number" ? (quota.on_demand_used_cents / 100).toFixed(2) : translate("unknown");
-        if (quota.on_demand_kind === "disabled") return translate("unavailable");
+        if (quota.on_demand_kind === "disabled") return translate("onDemandDisabled");
         if (quota.on_demand_kind === "unlimited") return `${used} / unlimited`;
         if (typeof quota.on_demand_limit_cents === "number") return `${used} / ${(quota.on_demand_limit_cents / 100).toFixed(2)}`;
         return used;
@@ -474,10 +490,12 @@
         const metrics = document.createElement("div");
         metrics.className = "metrics";
         metrics.append(
-          metric(translate("quotaPlan"), account.subscription_quota?.plan_name || translate("unknown")),
+          metric(translate("quotaPlan"), [account.subscription_quota?.plan_name, account.subscription_quota?.price].filter(Boolean).join(" ") || translate("unknown")),
           metric(translate("quotaIncluded"), formatPercent(account.subscription_quota?.included_percent_used)),
-          metric(translate("quotaAuto"), formatPercent(account.subscription_quota?.auto_percent_used)),
-          metric(translate("quotaApi"), formatPercent(account.subscription_quota?.api_percent_used)),
+          metric(translate("cursorModels"), formatUsed(account.subscription_quota?.auto_percent_used)),
+          metric(translate("otherModels"), formatUsed(account.subscription_quota?.api_percent_used)),
+          metric(translate("grokBot"), formatUsed(account.subscription_quota?.grok_bot_percent_used)),
+          metric(translate("grokBotReset"), account.subscription_quota?.grok_bot_resets_at || translate("unknown")),
           metric(translate("quotaReset"), account.subscription_quota?.resets_at || translate("unknown")),
           metric(translate("quotaOnDemand"), formatOnDemand(account.subscription_quota)),
           metric(translate("localEstimatedTokens"), account.local_usage?.total_tokens || 0),

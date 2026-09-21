@@ -155,14 +155,38 @@ func (handler *Handler) subscriptionQuota(ctx context.Context, accessToken strin
 	status := cursorQuotaStatus{
 		Status:              "available",
 		PlanName:            usage.PlanName,
+		Price:               usage.Price,
+		DisplayMessage:      usage.DisplayMessage,
+		AutoDisplayMessage:  usage.AutoDisplayMessage,
+		APIDisplayMessage:   usage.APIDisplayMessage,
 		IncludedPercentUsed: &included,
 		AutoPercentUsed:     &autoPercent,
 		APIPercentUsed:      &apiPercent,
 		OnDemandKind:        usage.OnDemandKind,
 		OnDemandUsedCents:   &usedCents,
 	}
+	if usage.HasIncludedSpend {
+		spend := usage.IncludedSpendCents
+		limit := usage.IncludedLimitCents
+		status.IncludedSpendCents = &spend
+		status.IncludedLimitCents = &limit
+	}
+	if !usage.BillingCycleStart.IsZero() {
+		status.CycleStartAt = usage.BillingCycleStart.UTC().Format(time.RFC3339)
+	}
 	if !usage.BillingCycleEnd.IsZero() {
 		status.ResetsAt = usage.BillingCycleEnd.UTC().Format(time.RFC3339)
+	}
+	status.GrokBotLabel = usage.GrokBotLabel
+	if usage.HasGrokBotPercent {
+		percent := usage.GrokBotPercentUsed
+		status.GrokBotPercentUsed = &percent
+	}
+	if !usage.GrokBotPeriodStart.IsZero() {
+		status.GrokBotCycleStartAt = usage.GrokBotPeriodStart.UTC().Format(time.RFC3339Nano)
+	}
+	if !usage.GrokBotResetsAt.IsZero() {
+		status.GrokBotResetsAt = usage.GrokBotResetsAt.UTC().Format(time.RFC3339Nano)
 	}
 	if usage.HasOnDemandLimit {
 		limitCents := usage.OnDemandLimitCents

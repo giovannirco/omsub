@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -16,10 +17,24 @@ const dashboardTimeout = 10 * time.Second
 
 type PeriodUsage struct {
 	PlanName            string
+	Price               string
+	IncludedAmountCents int64
+	DisplayMessage      string
+	AutoDisplayMessage  string
+	APIDisplayMessage   string
 	IncludedPercentUsed float64
 	AutoPercentUsed     float64
 	APIPercentUsed      float64
+	IncludedSpendCents  int64
+	IncludedLimitCents  int64
+	HasIncludedSpend    bool
+	BillingCycleStart   time.Time
 	BillingCycleEnd     time.Time
+	GrokBotLabel        string
+	GrokBotPercentUsed  float64
+	HasGrokBotPercent   bool
+	GrokBotPeriodStart  time.Time
+	GrokBotResetsAt     time.Time
 	OnDemandKind        string
 	OnDemandUsedCents   int64
 	OnDemandLimitCents  int64
@@ -40,7 +55,12 @@ func (client *Client) CurrentPeriodUsage(ctx context.Context, accessToken string
 	_ = client.postDashboard(ctx, accessToken, "GetPlanInfo", &plan)
 	var limit hardLimitResponse
 	_ = client.postDashboard(ctx, accessToken, "GetHardLimit", &limit)
-	return assemblePeriodUsage(period, plan, limit), nil
+	usage := assemblePeriodUsage(period, plan, limit)
+	var sand sandUsageResponse
+	if err := client.postDashboard(ctx, accessToken, "GetSandUsageStatus", &sand); err == nil {
+		applySandUsage(&usage, sand)
+	}
+	return usage, nil
 }
 
 func (client *Client) postDashboard(ctx context.Context, accessToken string, method string, response any) error {
@@ -71,9 +91,13 @@ func (client *Client) postDashboard(ctx context.Context, accessToken string, met
 }
 
 type currentPeriodUsageResponse struct {
-	BillingCycleEnd flexInt64   `json:"billingCycleEnd"`
-	PlanUsage       *planUsage  `json:"planUsage"`
-	SpendLimitUsage *spendLimit `json:"spendLimitUsage"`
+	BillingCycleStart                flexInt64   `json:"billingCycleStart"`
+	BillingCycleEnd                  flexInt64   `json:"billingCycleEnd"`
+	PlanUsage                        *planUsage  `json:"planUsage"`
+	SpendLimitUsage                  *spendLimit `json:"spendLimitUsage"`
+	DisplayMessage                   string      `json:"displayMessage"`
+	AutoModelSelectedDisplayMessage  string      `json:"autoModelSelectedDisplayMessage"`
+	NamedModelSelectedDisplayMessage string      `json:"namedModelSelectedDisplayMessage"`
 }
 
 type planUsage struct {
@@ -92,14 +116,23 @@ type spendLimit struct {
 
 type planInfoResponse struct {
 	PlanInfo *struct {
-		PlanName        string    `json:"planName"`
-		BillingCycleEnd flexInt64 `json:"billingCycleEnd"`
+		PlanName            string    `json:"planName"`
+		IncludedAmountCents flexInt64 `json:"includedAmountCents"`
+		Price               string    `json:"price"`
+		BillingCycleEnd     flexInt64 `json:"billingCycleEnd"`
 	} `json:"planInfo"`
 }
 
 type hardLimitResponse struct {
 	HardLimit           flexInt64 `json:"hardLimit"`
 	NoUsageBasedAllowed bool      `json:"noUsageBasedAllowed"`
+}
+
+type sandUsageResponse struct {
+	CurrentPeriodStart    string      `json:"currentPeriodStart"`
+	NextResetTimestampUtc string      `json:"nextResetTimestampUtc"`
+	UsagePercent          flexFloat64 `json:"usagePercent"`
+	GrokPlanLabel         string      `json:"grokPlanLabel"`
 }
 
 func assemblePeriodUsage(period currentPeriodUsageResponse, plan planInfoResponse, limit hardLimitResponse) PeriodUsage {
@@ -112,12 +145,26 @@ func assemblePeriodUsage(period currentPeriodUsageResponse, plan planInfoRespons
 	}
 	usage.AutoPercentUsed = planUsage.AutoPercentUsed.value
 	usage.APIPercentUsed = planUsage.APIPercentUsed.value
+	if planUsage.IncludedSpend.set || planUsage.Limit.set {
+		usage.IncludedSpendCents = planUsage.IncludedSpend.value
+		usage.IncludedLimitCents = planUsage.Limit.value
+		usage.HasIncludedSpend = true
+	}
+	usage.DisplayMessage = period.DisplayMessage
+	usage.AutoDisplayMessage = period.AutoModelSelectedDisplayMessage
+	usage.APIDisplayMessage = period.NamedModelSelectedDisplayMessage
+	startMillis := int64(period.BillingCycleStart.value)
 	endMillis := int64(period.BillingCycleEnd.value)
 	if plan.PlanInfo != nil {
 		usage.PlanName = plan.PlanInfo.PlanName
+		usage.Price = plan.PlanInfo.Price
+		usage.IncludedAmountCents = int64(plan.PlanInfo.IncludedAmountCents.value)
 		if endMillis <= 0 {
 			endMillis = int64(plan.PlanInfo.BillingCycleEnd.value)
 		}
+	}
+	if startMillis > 0 {
+		usage.BillingCycleStart = time.UnixMilli(startMillis).UTC()
 	}
 	if endMillis > 0 {
 		usage.BillingCycleEnd = time.UnixMilli(endMillis).UTC()
@@ -142,6 +189,32 @@ func assemblePeriodUsage(period currentPeriodUsageResponse, plan planInfoRespons
 		usage.OnDemandKind = "fixed"
 	}
 	return usage
+}
+
+func applySandUsage(usage *PeriodUsage, sand sandUsageResponse) {
+	if sand.UsagePercent.set {
+		usage.GrokBotPercentUsed = sand.UsagePercent.value
+		usage.HasGrokBotPercent = true
+	}
+	usage.GrokBotLabel = sand.GrokPlanLabel
+	if start, ok := parseDashboardTime(sand.CurrentPeriodStart); ok {
+		usage.GrokBotPeriodStart = start
+	}
+	if end, ok := parseDashboardTime(sand.NextResetTimestampUtc); ok {
+		usage.GrokBotResetsAt = end
+	}
+}
+
+func parseDashboardTime(value string) (time.Time, bool) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return time.Time{}, false
+	}
+	parsed, err := time.Parse(time.RFC3339Nano, value)
+	if err != nil {
+		return time.Time{}, false
+	}
+	return parsed.UTC(), true
 }
 
 type flexInt64 struct {
