@@ -16,6 +16,51 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func Test_Handler_ManagementStatus_reports_dashboard_period_usage(t *testing.T) {
+	credentials, err := cursorauth.MarshalCredentials(cursorauth.Credentials{
+		AccessToken:  "secret-access",
+		RefreshToken: "secret-refresh",
+		Type:         "cursor",
+	})
+	require.NoError(t, err)
+	handler := NewHandler(Dependencies{
+		Cursor: periodUsageCursorClient{
+			fakeModelCursorClient: fakeModelCursorClient{models: []string{"default"}},
+			usage: cursorapi.PeriodUsage{
+				PlanName:            "Pro",
+				IncludedPercentUsed: 40,
+				AutoPercentUsed:     10,
+				APIPercentUsed:      30,
+				BillingCycleEnd:     time.Date(2026, 9, 30, 0, 0, 0, 0, time.UTC),
+				OnDemandKind:        "fixed",
+				OnDemandUsedCents:   250,
+				OnDemandLimitCents:  2000,
+				HasOnDemandLimit:    true,
+			},
+		},
+		Host: &fakeHostCaller{credentialJSON: credentials},
+	})
+
+	response, err := handler.managementStatus(context.Background())
+
+	require.NoError(t, err)
+	require.Contains(t, string(response.Body), `"plan_name":"Pro"`)
+	require.Contains(t, string(response.Body), `"included_percent_used":40`)
+	require.Contains(t, string(response.Body), `"resets_at":"2026-09-30T00:00:00Z"`)
+	require.Contains(t, string(response.Body), `"on_demand_limit_cents":2000`)
+	require.NotContains(t, string(response.Body), "secret-access")
+}
+
+type periodUsageCursorClient struct {
+	fakeModelCursorClient
+	usage cursorapi.PeriodUsage
+	err   error
+}
+
+func (client periodUsageCursorClient) CurrentPeriodUsage(context.Context, string) (cursorapi.PeriodUsage, error) {
+	return client.usage, client.err
+}
+
 func Test_Handler_ManagementStatus_reports_models_disabled_rules_and_honest_quota_state(t *testing.T) {
 	credentials, err := cursorauth.MarshalCredentials(cursorauth.Credentials{
 		AccessToken:    "secret-access",
@@ -36,7 +81,7 @@ func Test_Handler_ManagementStatus_reports_models_disabled_rules_and_honest_quot
 	require.NoError(t, err)
 	require.Equal(t, 200, response.StatusCode)
 	require.Contains(t, string(response.Body), `"subscription_quota":{"status":"unavailable"`)
-	require.Contains(t, string(response.Body), `"reason":"Cursor does not publish a subscription remaining-quota API"`)
+	require.Contains(t, string(response.Body), `"reason":"Cursor usage client is not configured"`)
 	require.Contains(t, string(response.Body), `"id":"gpt-5","disabled":true`)
 	require.NotContains(t, string(response.Body), "secret-access")
 	require.NotContains(t, string(response.Body), "secret-refresh")
@@ -465,10 +510,10 @@ func Test_Handler_ManagementResource_serves_bilingual_shell_without_exposing_aut
 	require.Contains(t, string(response.Body), `unknown: "Unknown"`)
 	require.Contains(t, string(response.Body), `metric(translate("cachedTokens"), translate("unknown"))`)
 	require.Contains(t, string(response.Body), `checkpoint.ttft_average_ms == null ? translate("unknown")`)
-	require.Contains(t, string(response.Body), `<span class="nowrap" data-i18n="quotaUnknownTerm">“未知”</span>`)
-	require.Contains(t, string(response.Body), `quotaBodySuffixPrefix: "。缓\u2060存 Token 未\u2060知时会明确显\u2060示"`)
-	require.Contains(t, string(response.Body), `quotaUnknownTerm: "Unknown"`)
-	require.Contains(t, string(response.Body), `quotaBodySuffixSuffix: " when unavailable."`)
+	require.Contains(t, string(response.Body), `data-i18n="quotaBody">计划用量来自 Cursor DashboardService/GetCurrentPeriodUsage`)
+	require.Contains(t, string(response.Body), `quotaBody: "Plan usage comes from Cursor DashboardService/GetCurrentPeriodUsage`)
+	require.Contains(t, string(response.Body), `formatPercent(account.subscription_quota?.included_percent_used)`)
+	require.Contains(t, string(response.Body), `formatOnDemand(account.subscription_quota)`)
 	require.Contains(t, string(response.Body), `.nowrap { white-space: nowrap; }`)
 	require.Contains(t, string(response.Body), `--focus: #1d4ed8;`)
 	require.Contains(t, string(response.Body), `.models { max-height: none; overflow: visible; }`)

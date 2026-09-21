@@ -8,10 +8,17 @@ import (
 	"strings"
 	"time"
 
+	"cursorplugin/internal/cursorapi"
 	"cursorplugin/internal/cursorauth"
 )
 
 const quotaUnavailableReason = "Cursor does not publish a subscription remaining-quota API"
+
+const quotaClientMissingReason = "Cursor usage client is not configured"
+
+type periodUsageClient interface {
+	CurrentPeriodUsage(context.Context, string) (cursorapi.PeriodUsage, error)
+}
 
 func (handler *Handler) managementStatus(ctx context.Context) (managementResponse, error) {
 	files, err := handler.cursorAuthFiles(ctx)
@@ -124,12 +131,44 @@ func (handler *Handler) cursorAccountStatusWithCredential(ctx context.Context, f
 		Label:              file.Label,
 		Status:             cursorPluginStatus(file.Status, localUsage.LastOutcome),
 		HostRuntime:        cursorHostRuntime(file),
-		SubscriptionQuota:  cursorQuotaStatus{Status: "unavailable", Reason: quotaUnavailableReason},
+		SubscriptionQuota:  handler.subscriptionQuota(ctx, credential.AccessToken),
 		LocalUsage:         localUsage,
 		CheckpointMetrics:  handler.usage.checkpoints.snapshot(metricKey),
 		Models:             items,
 		ModelContextStatus: metadataStatus,
 	}, nil
+}
+
+func (handler *Handler) subscriptionQuota(ctx context.Context, accessToken string) cursorQuotaStatus {
+	reader, ok := handler.cursor.(periodUsageClient)
+	if !ok {
+		return cursorQuotaStatus{Status: "unavailable", Reason: quotaClientMissingReason}
+	}
+	usage, err := reader.CurrentPeriodUsage(ctx, accessToken)
+	if err != nil {
+		return cursorQuotaStatus{Status: "unavailable", Reason: err.Error()}
+	}
+	included := usage.IncludedPercentUsed
+	autoPercent := usage.AutoPercentUsed
+	apiPercent := usage.APIPercentUsed
+	usedCents := usage.OnDemandUsedCents
+	status := cursorQuotaStatus{
+		Status:              "available",
+		PlanName:            usage.PlanName,
+		IncludedPercentUsed: &included,
+		AutoPercentUsed:     &autoPercent,
+		APIPercentUsed:      &apiPercent,
+		OnDemandKind:        usage.OnDemandKind,
+		OnDemandUsedCents:   &usedCents,
+	}
+	if !usage.BillingCycleEnd.IsZero() {
+		status.ResetsAt = usage.BillingCycleEnd.UTC().Format(time.RFC3339)
+	}
+	if usage.HasOnDemandLimit {
+		limitCents := usage.OnDemandLimitCents
+		status.OnDemandLimitCents = &limitCents
+	}
+	return status
 }
 
 func cursorMetricKey(file hostAuthFile) string {
