@@ -13,6 +13,10 @@ type authModelRequest struct {
 	StorageJSON []byte `json:"StorageJSON"`
 }
 
+type modelContextProvider interface {
+	ModelContextLengths(context.Context, string) (map[string]int64, error)
+}
+
 func (handler *Handler) modelsForAuth(ctx context.Context, raw []byte) (any, error) {
 	var request authModelRequest
 	if err := json.Unmarshal(raw, &request); err != nil {
@@ -26,7 +30,14 @@ func (handler *Handler) modelsForAuth(ctx context.Context, raw []byte) (any, err
 	if err != nil {
 		return nil, err
 	}
-	return modelResponse(filterDisabledModels(models, credentials.DisabledModels)), nil
+	var contexts map[string]int64
+	if provider, ok := handler.cursor.(modelContextProvider); ok {
+		contexts, err = provider.ModelContextLengths(ctx, credentials.AccessToken)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return modelResponse(filterDisabledModels(models, credentials.DisabledModels), contexts), nil
 }
 
 func filterDisabledModels(models, disabled []string) []string {
@@ -50,7 +61,7 @@ func filterDisabledModels(models, disabled []string) []string {
 	return filtered
 }
 
-func modelResponse(ids []string) any {
+func modelResponse(ids []string, contexts map[string]int64) any {
 	models := make([]modelInfo, 0, len(ids))
 	for _, rawID := range ids {
 		id := strings.TrimSpace(rawID)
@@ -65,8 +76,7 @@ func modelResponse(ids []string) any {
 			SupportedGenerationMethods: []string{"chat"},
 			SupportedInputModalities:   []string{"text", "image"},
 			SupportedOutputModalities:  []string{"text", "image"},
-			ContextLength:              200000,
-			MaxCompletionTokens:        32768,
+			ContextLength:              contexts[id],
 			UserDefined:                true,
 		})
 	}

@@ -69,8 +69,8 @@ type modelInfo struct {
 	SupportedGenerationMethods []string `json:"SupportedGenerationMethods"`
 	SupportedInputModalities   []string `json:"SupportedInputModalities"`
 	SupportedOutputModalities  []string `json:"SupportedOutputModalities"`
-	ContextLength              int64    `json:"ContextLength"`
-	MaxCompletionTokens        int64    `json:"MaxCompletionTokens"`
+	ContextLength              int64    `json:"ContextLength,omitempty"`
+	MaxCompletionTokens        int64    `json:"MaxCompletionTokens,omitempty"`
 	UserDefined                bool     `json:"UserDefined"`
 }
 

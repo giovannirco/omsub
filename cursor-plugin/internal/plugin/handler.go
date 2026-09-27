@@ -80,7 +80,7 @@ func (handler *Handler) dispatch(ctx context.Context, method string, request []b
 	case "auth.refresh":
 		return handler.refreshAuth(ctx, request)
 	case "model.static":
-		return modelResponse([]string{"auto"}), nil
+		return modelResponse([]string{"auto"}, nil), nil
 	case "model.for_auth":
 		return handler.modelsForAuth(ctx, request)
 	case "executor.execute":

@@ -36,6 +36,29 @@ func Test_Handler_ModelsForAuth_hides_models_disabled_by_cursor_plugin(t *testin
 	require.NotContains(t, string(rawResult), `"ID":"cursor/gpt-5"`)
 }
 
+func Test_Handler_static_models_omit_unverified_token_limits(t *testing.T) {
+	// Given
+	handler := NewHandler(Dependencies{Cursor: fakeModelCursorClient{}})
+
+	// When
+	raw, ok := handler.CallWithStatus(context.Background(), "model.static", nil)
+
+	// Then
+	require.True(t, ok)
+	var response struct {
+		Result struct {
+			Models []struct {
+				ContextLength       *int64
+				MaxCompletionTokens *int64
+			}
+		}
+	}
+	require.NoError(t, json.Unmarshal(raw, &response))
+	require.Len(t, response.Result.Models, 1)
+	require.Nil(t, response.Result.Models[0].ContextLength)
+	require.Nil(t, response.Result.Models[0].MaxCompletionTokens)
+}
+
 type fakeModelCursorClient struct {
 	models []string
 }
