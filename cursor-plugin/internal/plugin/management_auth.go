@@ -13,80 +13,12 @@ import (
 
 const quotaUnavailableReason = "Cursor does not publish a subscription remaining-quota API"
 
-type hostAuthFile struct {
-	ID            string `json:"id"`
-	AuthIndex     string `json:"auth_index"`
-	Name          string `json:"name"`
-	Path          string `json:"path"`
-	Source        string `json:"source"`
-	Type          string `json:"type"`
-	Provider      string `json:"provider"`
-	Label         string `json:"label"`
-	Status        string `json:"status"`
-	StatusMessage string `json:"status_message"`
-	Success       int64  `json:"success"`
-	Failed        int64  `json:"failed"`
-	RuntimeOnly   bool   `json:"runtime_only"`
-}
-
-type hostRuntimeStatus struct {
-	Scope           string `json:"scope"`
-	Status          string `json:"status"`
-	StatusMessage   string `json:"status_message,omitempty"`
-	SuccessAttempts int64  `json:"success_attempts"`
-	FailedAttempts  int64  `json:"failed_attempts"`
-}
-
-type hostAuthListResponse struct {
-	Files []hostAuthFile `json:"files"`
-}
-
-type hostAuthGetResponse struct {
-	AuthIndex string          `json:"auth_index"`
-	Name      string          `json:"name"`
-	JSON      json.RawMessage `json:"json"`
-}
-
-type cursorModelStatus struct {
-	ID       string `json:"id"`
-	Disabled bool   `json:"disabled"`
-}
-
-type cursorQuotaStatus struct {
-	Status string `json:"status"`
-	Reason string `json:"reason"`
-}
-
-type cursorAccountStatus struct {
-	AuthIndex         string                 `json:"auth_index"`
-	Name              string                 `json:"name"`
-	Label             string                 `json:"label"`
-	Status            string                 `json:"status"`
-	HostRuntime       hostRuntimeStatus      `json:"host_runtime"`
-	SubscriptionQuota cursorQuotaStatus      `json:"subscription_quota"`
-	LocalUsage        localUsageStatus       `json:"local_usage"`
-	CheckpointMetrics checkpointMetricStatus `json:"checkpoint_metrics"`
-	Models            []cursorModelStatus    `json:"models"`
-}
-
-type cursorManagementStatus struct {
-	Provider          string                 `json:"provider"`
-	GeneratedAt       time.Time              `json:"generated_at"`
-	Accounts          []cursorAccountStatus  `json:"accounts"`
-	CheckpointMetrics checkpointMetricStatus `json:"checkpoint_metrics"`
-}
-
-type disabledModelsUpdate struct {
-	AuthIndex      string   `json:"auth_index"`
-	DisabledModels []string `json:"disabled_models"`
-}
-
 func (handler *Handler) managementStatus(ctx context.Context) (managementResponse, error) {
 	files, err := handler.cursorAuthFiles(ctx)
 	if err != nil {
 		return managementError(http.StatusBadGateway, err.Error()), nil
 	}
-	status := cursorManagementStatus{Provider: "cursor", GeneratedAt: time.Now().UTC(), Accounts: make([]cursorAccountStatus, 0, len(files)), CheckpointMetrics: handler.usage.checkpoints.total()}
+	status := cursorManagementStatus{Provider: "cursor", GeneratedAt: time.Now().UTC(), Accounts: make([]cursorAccountStatus, 0, len(files)), CheckpointMetrics: handler.usage.checkpoints.total(), ContextPolicy: currentContextPolicy()}
 	type authRecord struct {
 		file          hostAuthFile
 		credential    cursorauth.Credentials
@@ -146,15 +78,16 @@ func (handler *Handler) managementStatus(ctx context.Context) (managementRespons
 		if accountErr != nil {
 			metricKey := cursorMetricKey(record.file)
 			account = cursorAccountStatus{
-				AuthIndex:         record.file.AuthIndex,
-				Name:              record.file.Name,
-				Label:             record.file.Label,
-				Status:            "unavailable: " + accountErr.Error(),
-				HostRuntime:       cursorHostRuntime(record.file),
-				SubscriptionQuota: cursorQuotaStatus{Status: "unavailable", Reason: quotaUnavailableReason},
-				LocalUsage:        handler.usage.snapshot(metricKey),
-				CheckpointMetrics: handler.usage.checkpoints.snapshot(metricKey),
-				Models:            []cursorModelStatus{},
+				AuthIndex:          record.file.AuthIndex,
+				Name:               record.file.Name,
+				Label:              record.file.Label,
+				Status:             "unavailable: " + accountErr.Error(),
+				HostRuntime:        cursorHostRuntime(record.file),
+				SubscriptionQuota:  cursorQuotaStatus{Status: "unavailable", Reason: quotaUnavailableReason},
+				LocalUsage:         handler.usage.snapshot(metricKey),
+				CheckpointMetrics:  handler.usage.checkpoints.snapshot(metricKey),
+				Models:             []cursorModelStatus{},
+				ModelContextStatus: "unavailable",
 			}
 		}
 		accountByRoot[root] = len(status.Accounts)
@@ -182,28 +115,20 @@ func (handler *Handler) cursorAccountStatusWithCredential(ctx context.Context, f
 	if err != nil {
 		return cursorAccountStatus{}, fmt.Errorf("discover Cursor models: %w", err)
 	}
-	disabled := normalizedModelSet(credential.DisabledModels)
-	items := make([]cursorModelStatus, 0, len(models))
-	for _, model := range models {
-		id := normalizeModelID(model)
-		if id == "" {
-			continue
-		}
-		_, blocked := disabled[id]
-		items = append(items, cursorModelStatus{ID: id, Disabled: blocked})
-	}
+	items, metadataStatus := handler.managementModelContexts(ctx, models, credential)
 	metricKey := cursorMetricKey(file)
 	localUsage := handler.usage.snapshot(metricKey)
 	return cursorAccountStatus{
-		AuthIndex:         file.AuthIndex,
-		Name:              file.Name,
-		Label:             file.Label,
-		Status:            cursorPluginStatus(file.Status, localUsage.LastOutcome),
-		HostRuntime:       cursorHostRuntime(file),
-		SubscriptionQuota: cursorQuotaStatus{Status: "unavailable", Reason: quotaUnavailableReason},
-		LocalUsage:        localUsage,
-		CheckpointMetrics: handler.usage.checkpoints.snapshot(metricKey),
-		Models:            items,
+		AuthIndex:          file.AuthIndex,
+		Name:               file.Name,
+		Label:              file.Label,
+		Status:             cursorPluginStatus(file.Status, localUsage.LastOutcome),
+		HostRuntime:        cursorHostRuntime(file),
+		SubscriptionQuota:  cursorQuotaStatus{Status: "unavailable", Reason: quotaUnavailableReason},
+		LocalUsage:         localUsage,
+		CheckpointMetrics:  handler.usage.checkpoints.snapshot(metricKey),
+		Models:             items,
+		ModelContextStatus: metadataStatus,
 	}, nil
 }
 

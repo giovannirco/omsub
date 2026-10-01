@@ -70,6 +70,8 @@ type modelInfo struct {
 	SupportedInputModalities   []string `json:"SupportedInputModalities"`
 	SupportedOutputModalities  []string `json:"SupportedOutputModalities"`
 	ContextLength              int64    `json:"ContextLength,omitempty"`
+	NativeContextLength        int64    `json:"NativeContextLength,omitempty"`
+	ClientContextLimit         int64    `json:"ClientContextLimit"`
 	MaxCompletionTokens        int64    `json:"MaxCompletionTokens,omitempty"`
 	UserDefined                bool     `json:"UserDefined"`
 }

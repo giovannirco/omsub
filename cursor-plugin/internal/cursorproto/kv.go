@@ -114,7 +114,7 @@ func (store *BlobStore) applyOperation(
 }
 
 func (store *BlobStore) set(blobID, blobData []byte) error {
-	if len(blobData) > maxBlobEntryBytes {
+	if len(blobID) > maxBlobEntryBytes || len(blobData) > maxBlobEntryBytes-len(blobID) {
 		return ErrBlobCapacity
 	}
 	key := string(blobID)
@@ -123,6 +123,7 @@ func (store *BlobStore) set(blobID, blobData []byte) error {
 	projectedEntries := len(store.blobs)
 	if !exists {
 		projectedEntries++
+		projectedBytes += len(key)
 	}
 	if projectedBytes > maxBlobTotalBytes || projectedEntries > maxBlobEntries {
 		return ErrBlobCapacity

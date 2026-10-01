@@ -58,8 +58,8 @@ func Test_Handler_models_use_discovered_default_context_and_refresh(t *testing.T
 	handler := NewHandler(Dependencies{Cursor: client})
 	request, err := json.Marshal(authModelRequest{StorageJSON: []byte(`{"type":"cursor","access_token":"access","refresh_token":"refresh","disabled_models":["disabled"]}`)})
 	require.NoError(t, err)
-	for _, expected := range []int64{256000, 384000} {
-		capacity.Store(expected)
+	for _, expected := range []struct{ native, effective int64 }{{256000, 256000}, {384000, 384000}, {2000000, 1000000}} {
+		capacity.Store(expected.native)
 		// When
 		raw, ok := handler.CallWithStatus(context.Background(), "model.for_auth", request)
 		// Then
@@ -69,6 +69,8 @@ func Test_Handler_models_use_discovered_default_context_and_refresh(t *testing.T
 				Models []struct {
 					ID                  string
 					ContextLength       *int64
+					NativeContextLength *int64
+					ClientContextLimit  int64
 					MaxCompletionTokens *int64
 				}
 			}
@@ -77,12 +79,16 @@ func Test_Handler_models_use_discovered_default_context_and_refresh(t *testing.T
 		require.Len(t, response.Result.Models, 4)
 		for _, model := range response.Result.Models {
 			require.Nil(t, model.MaxCompletionTokens)
+			require.EqualValues(t, 1000000, model.ClientContextLimit)
 			if model.ID == "cursor/unknown" {
 				require.Nil(t, model.ContextLength)
+				require.Nil(t, model.NativeContextLength)
 				continue
 			}
 			require.NotNil(t, model.ContextLength)
-			require.Equal(t, expected, *model.ContextLength, model.ID)
+			require.Equal(t, expected.effective, *model.ContextLength, model.ID)
+			require.NotNil(t, model.NativeContextLength)
+			require.Equal(t, expected.native, *model.NativeContextLength, model.ID)
 		}
 	}
 }

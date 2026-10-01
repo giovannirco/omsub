@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"cursorplugin/internal/cursorauth"
 	"cursorplugin/internal/cursorproto"
@@ -39,7 +38,9 @@ func (handler *Handler) execute(ctx context.Context, raw []byte) (any, error) {
 		}
 		return nil
 	})
-	if err != nil {
+	if errors.Is(err, errOutputLimit) {
+		turn.MarkLengthLimited()
+	} else if err != nil {
 		return nil, withExecutionResult(err, result)
 	}
 	payload, err := turn.Completion(inputText)
@@ -115,7 +116,12 @@ func (handler *Handler) runStream(parent context.Context, request executorReques
 			return nil
 		}
 	})
-	if runErr == nil && toolCallSeen && !done {
+	limited := errors.Is(runErr, errOutputLimit)
+	if limited {
+		turn.MarkLengthLimited()
+		runErr = nil
+	}
+	if runErr == nil && (toolCallSeen || limited) && !done {
 		chunk, err := turn.FinalChunk(inputText)
 		if err != nil {
 			runErr = err
@@ -183,15 +189,7 @@ func usageText(chat openai.ChatRequest) string {
 }
 
 func decodeExecution(raw []byte) (executorRequest, openai.ChatRequest, cursorauth.Credentials, error) {
-	var request executorRequest
-	if err := json.Unmarshal(raw, &request); err != nil {
-		return executorRequest{}, openai.ChatRequest{}, cursorauth.Credentials{}, fmt.Errorf("decode executor request: %w", err)
-	}
-	payload := request.Payload
-	if len(payload) == 0 {
-		payload = request.OriginalRequest
-	}
-	chat, err := openai.ParseChatRequest(payload)
+	request, chat, _, err := decodeContextRequest(raw)
 	if err != nil {
 		return executorRequest{}, openai.ChatRequest{}, cursorauth.Credentials{}, err
 	}
@@ -211,20 +209,16 @@ func decodeExecution(raw []byte) (executorRequest, openai.ChatRequest, cursoraut
 }
 
 func countTokens(raw []byte) (any, error) {
-	var request executorRequest
-	if err := json.Unmarshal(raw, &request); err != nil {
-		return nil, fmt.Errorf("decode token request: %w", err)
-	}
-	payload := request.Payload
-	if len(payload) == 0 {
-		payload = request.OriginalRequest
-	}
-	chat, err := openai.ParseChatRequest(payload)
+	_, _, tokens, err := decodeContextRequest(raw)
 	if err != nil {
 		return nil, err
 	}
-	tokens := max(1, utf8.RuneCountInString(usageText(chat))/4)
-	encoded, err := json.Marshal(map[string]int{"total_tokens": tokens})
+	encoded, err := json.Marshal(struct {
+		TotalTokens        int64  `json:"total_tokens"`
+		Estimated          bool   `json:"estimated"`
+		CountMethod        string `json:"count_method"`
+		ClientContextLimit int64  `json:"client_context_limit"`
+	}{tokens, true, contextCountMethod, clientContextLimit})
 	if err != nil {
 		return nil, fmt.Errorf("encode token count: %w", err)
 	}

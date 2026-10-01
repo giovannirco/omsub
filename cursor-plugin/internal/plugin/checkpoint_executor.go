@@ -24,6 +24,13 @@ func (handler *Handler) runCheckpointed(
 	credentials cursorauth.Credentials,
 	emit func(cursorproto.ServerEvent) error,
 ) (cursorapi.RunResult, error) {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	boundedEmit := emit
+	if chat.OutputByteLimit > 0 {
+		budget := &outputBudget{remaining: chat.OutputByteLimit, emit: emit, cancel: cancel}
+		boundedEmit = budget.emitEvent
+	}
 	accountIdentity := strings.TrimSpace(credentials.AccountID)
 	if accountIdentity == "" {
 		accountIdentity = strings.TrimSpace(request.AuthID)
@@ -31,13 +38,16 @@ func (handler *Handler) runCheckpointed(
 	session, hasSession := request.stableSessionIdentity()
 	if accountIdentity == "" || !hasSession {
 		input := fullReplayInput(chat, credentials.AccessToken)
-		result, _, err := handler.runAttempt(ctx, input, emit)
+		result, _, err := handler.runAttempt(ctx, input, boundedEmit)
 		handler.usage.checkpoints.recordRun(request.AuthID, input, result)
 		return result, err
 	}
 
 	lockKey := sessionTurnKey{account: accountIdentity, model: chat.Model, session: session.String()}
-	release := handler.turns.acquire(lockKey)
+	release, err := handler.turns.acquire(ctx, lockKey)
+	if err != nil {
+		return cursorapi.RunResult{}, err
+	}
 	defer release()
 	key, err := cursorsession.NewKey(accountIdentity, chat.Model, session.String())
 	if err != nil {
@@ -69,7 +79,7 @@ func (handler *Handler) runCheckpointed(
 		}
 	}
 
-	result, observation, runErr := handler.runAttempt(ctx, input, emit)
+	result, observation, runErr := handler.runAttempt(ctx, input, boundedEmit)
 	handler.usage.checkpoints.recordRun(request.AuthID, input, result)
 	if shouldRetryFresh(input, result, observation, runErr, hasToolResult) {
 		handler.sessions.Invalidate(key, cursorsession.ReasonInvalidated)
@@ -78,7 +88,7 @@ func (handler *Handler) runCheckpointed(
 		token, _ = handler.sessions.Start(key, cursorsession.Match{})
 		handler.usage.checkpoints.recordLookup(request.AuthID, false)
 		input = fullReplayInput(chat, credentials.AccessToken)
-		result, observation, runErr = handler.runAttempt(ctx, input, emit)
+		result, observation, runErr = handler.runAttempt(ctx, input, boundedEmit)
 		handler.usage.checkpoints.recordRun(request.AuthID, input, result)
 	}
 	if runErr != nil {

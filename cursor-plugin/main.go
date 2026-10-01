@@ -94,11 +94,16 @@ func cliproxyPluginCall(method *C.char, request *C.uint8_t, requestLen C.size_t,
 		writeResponse(response, []byte(`{"ok":false,"error":{"code":"invalid_method","message":"method is required"}}`))
 		return 1
 	}
+	methodName := C.GoString(method)
+	if err := plugin.ValidateExecutorRequestSize(methodName, uint64(requestLen)); err != nil {
+		writeResponse(response, []byte(`{"ok":false,"error":{"code":"context_length_exceeded","message":"executor envelope exceeds 4 MiB","http_status":400,"request_scoped":true}}`))
+		return 1
+	}
 	var rawRequest []byte
 	if request != nil && requestLen > 0 {
 		rawRequest = C.GoBytes(unsafe.Pointer(request), C.int(requestLen))
 	}
-	rawResponse, ok := handler.CallWithStatus(context.Background(), C.GoString(method), rawRequest)
+	rawResponse, ok := handler.CallWithStatus(context.Background(), methodName, rawRequest)
 	writeResponse(response, rawResponse)
 	if !ok {
 		return 1

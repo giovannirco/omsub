@@ -37,15 +37,16 @@ type Attachment struct {
 }
 
 type ChatRequest struct {
-	Model       string
-	System      string
-	Prompt      string
-	Stream      bool
-	Tools       []Tool
-	Images      []Image
-	Attachments []Attachment
-	Transcript  []Message
-	Lineage     Lineage
+	OutputByteLimit int64
+	Model           string
+	System          string
+	Prompt          string
+	Stream          bool
+	Tools           []Tool
+	Images          []Image
+	Attachments     []Attachment
+	Transcript      []Message
+	Lineage         Lineage
 }
 
 type wireChatRequest struct {
@@ -87,7 +88,7 @@ func ParseChatRequest(raw []byte) (ChatRequest, error) {
 	if err := json.Unmarshal(raw, &wire); err != nil {
 		return ChatRequest{}, invalidRequest("decode OpenAI chat request: " + err.Error())
 	}
-	model := strings.TrimPrefix(strings.TrimSpace(wire.Model), "cursor/")
+	model := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(wire.Model), "cursor/"))
 	if model == "" || len(wire.Messages) == 0 {
 		return ChatRequest{}, invalidRequest("OpenAI chat request requires model and messages")
 	}

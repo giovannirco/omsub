@@ -52,6 +52,10 @@ func describeExecutionError(err error) *envelopeError {
 		details.HTTPStatus = status.StatusCode()
 	}
 	switch {
+	case errors.Is(err, errSessionBusy):
+		details.Code = "cursor_session_busy"
+		details.HTTPStatus = http.StatusConflict
+		details.RequestScoped = true
 	case errors.Is(err, cursorapi.ErrProgressTimeout):
 		details.Code = "cursor_progress_timeout"
 		details.HTTPStatus = http.StatusGatewayTimeout
@@ -78,6 +82,10 @@ func describeExecutionError(err error) *envelopeError {
 	var loop *openai.ToolLoopError
 	if errors.As(err, &loop) {
 		details.Code = "cursor_tool_loop_detected"
+	}
+	var limit *contextLimitError
+	if errors.As(err, &limit) {
+		details.Code = "context_length_exceeded"
 	}
 	details.Retryable = !details.RequestScoped && !details.OutputExposed && !details.ToolExposed && !details.InteractionResponded
 	return details

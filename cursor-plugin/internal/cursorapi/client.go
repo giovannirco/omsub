@@ -150,6 +150,8 @@ func cursorProjectName(workspacePath string) string {
 }
 
 func (client *Client) DiscoverModels(ctx context.Context, accessToken string) ([]string, error) {
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, client.endpoint("/agent.v1.AgentService/GetUsableModels"), http.NoBody)
 	if err != nil {
 		return nil, fmt.Errorf("create Cursor model request: %w", err)

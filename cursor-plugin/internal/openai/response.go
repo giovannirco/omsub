@@ -12,14 +12,15 @@ import (
 )
 
 type Turn struct {
-	id           string
-	model        string
-	created      int64
-	text         string
-	tools        []responseToolCall
-	images       []responseImage
-	toolIDOwners map[string]string
-	responseErr  error
+	id            string
+	model         string
+	created       int64
+	text          string
+	tools         []responseToolCall
+	images        []responseImage
+	toolIDOwners  map[string]string
+	responseErr   error
+	lengthLimited bool
 }
 
 type Usage struct {
@@ -76,6 +77,8 @@ type responseToolFunction struct {
 func NewTurn(model string) *Turn {
 	return &Turn{id: "chatcmpl-" + randomHex(12), model: model, created: time.Now().Unix()}
 }
+
+func (turn *Turn) MarkLengthLimited() { turn.lengthLimited = true }
 
 func (turn *Turn) StreamChunk(text string) ([]byte, error) {
 	turn.text += text
@@ -196,7 +199,7 @@ func (turn *Turn) validateOutput() error {
 	if turn.responseErr != nil {
 		return turn.responseErr
 	}
-	if strings.TrimSpace(turn.text) == "" && len(turn.tools) == 0 && len(turn.images) == 0 {
+	if !turn.lengthLimited && strings.TrimSpace(turn.text) == "" && len(turn.tools) == 0 && len(turn.images) == 0 {
 		return fmt.Errorf("Cursor response has no text or tool calls (and no images)")
 	}
 	return nil
@@ -228,6 +231,9 @@ func (turn *Turn) EstimatedUsage(prompt string) Usage {
 }
 
 func (turn *Turn) finishReason() string {
+	if turn.lengthLimited {
+		return "length"
+	}
 	if len(turn.tools) > 0 {
 		return "tool_calls"
 	}

@@ -34,7 +34,10 @@ func (handler *Handler) modelsForAuth(ctx context.Context, raw []byte) (any, err
 	if provider, ok := handler.cursor.(modelContextProvider); ok {
 		contexts, err = provider.ModelContextLengths(ctx, credentials.AccessToken)
 		if err != nil {
-			return nil, err
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
+			contexts = nil
 		}
 	}
 	return modelResponse(filterDisabledModels(models, credentials.DisabledModels), contexts), nil
@@ -76,7 +79,9 @@ func modelResponse(ids []string, contexts map[string]int64) any {
 			SupportedGenerationMethods: []string{"chat"},
 			SupportedInputModalities:   []string{"text", "image"},
 			SupportedOutputModalities:  []string{"text", "image"},
-			ContextLength:              contexts[id],
+			ContextLength:              effectiveContextLength(contexts[id]),
+			NativeContextLength:        contexts[id],
+			ClientContextLimit:         clientContextLimit,
 			UserDefined:                true,
 		})
 	}
