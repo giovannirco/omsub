@@ -7,7 +7,7 @@
 
 ## 当前源码版本
 
-当前源码版本为 **0.6.5**，上下文容量改为读取 Cursor 上游默认模式元数据，未知容量与输出上限不再硬编码，变更见[版本说明](docs/releases/v0.6.5.md)，安装包见 [GitHub Release v0.6.5](https://github.com/yobo2u/omsub/releases/tag/v0.6.5)。更新源码或打包版本不会自动升级已运行插件或启用账户策略；安装前请校验同一 Release 的 `checksums.txt`。
+当前源码版本为 **0.6.6**，补齐上下文准入、会话排队与 Blob 预算、输出截断和模型发现可用性保护，变更见[版本说明](docs/releases/v0.6.6.md)，安装包见 [GitHub Release v0.6.6](https://github.com/yobo2u/omsub/releases/tag/v0.6.6)。更新源码或打包版本不会自动升级已运行插件或启用账户策略；安装前请校验同一 Release 的 `checksums.txt`。
 
 ## 已验证宿主环境
 
@@ -25,10 +25,10 @@
 `cursor` 安装。商店会从最新的 `v<version>` GitHub Release 下载当前平台 ZIP，
 并用同一 Release 中的 `checksums.txt` 校验文件。
 
-0.6.5 商店格式包仅面向 Linux amd64：
+0.6.6 商店格式包仅面向 Linux amd64：
 
 ```text
-cursor_0.6.5_linux_amd64.zip
+cursor_0.6.6_linux_amd64.zip
 checksums.txt
 ```
 
@@ -37,8 +37,8 @@ checksums.txt
 解压发布包，然后把 `--plugins-dir` 指向 CLIProxyAPI 配置中的 `plugins.dir`：
 
 ```sh
-tar -xzf cursor-plugin-0.6.5-linux-amd64.tar.gz
-cd cursor-plugin-0.6.5-linux-amd64
+tar -xzf cursor-plugin-0.6.6-linux-amd64.tar.gz
+cd cursor-plugin-0.6.6-linux-amd64
 sudo ./install.sh --plugins-dir /opt/cpa-manager-plus/cliproxyapi/plugins
 ```
 
@@ -104,7 +104,8 @@ sudo ./uninstall.sh --plugins-dir /opt/cpa-manager-plus/cliproxyapi/plugins
 - 0.6.3 的工具交接、结构化超时和宿主配套要求见[流式错误边界](docs/cursor-stream-failures.md)。不支持结构化错误的宿主仍可读取错误字符串，但不会自动获得修正后的冷却与重试分类；不能仅升级插件就视为问题全部解除。
 - v0.5.10 的修复和升级说明见[发布说明](docs/releases/v0.5.10.md)。原生 grep/read/shell 请求会收到完整的不可执行协议回复，由客户端已公开的工具完成实际操作；网关不会执行这些原生文件读取或命令。
 - 工具结果续轮会明确标记已完成的结果，帮助 Agent 继续回答，避免重复前言或再次发出已完成的工具调用。已有 OpenCode 会话中保存的重复内容不会被自动修改。
-- 支持 OpenAI `chat-completions` 文本消息、非流式和 SSE 流式响应，并兼容 OpenCode 发送的 `max_tokens`、`stream_options` 等扩展字段。
+- 支持 OpenAI `chat-completions` 文本消息、非流式和 SSE 流式响应。`max_tokens` / `max_completion_tokens` 参与本地入口预算，但尚未作为 Cursor 上游输出硬限制执行；`stream_options` 等未实现字段仍不应当作已生效能力。
+- 未发布的上下文防护修改在插件模型接口及管理 status JSON 中分别提供原生非 MAX 容量和 1,000,000 策略上限；未知原生容量不伪造。入口使用保守字节预算，输入 JSON 约 0.98 MB 即可能拒绝，不能等同于“允许精确 1M 原生 token”。普通执行、流式、计数和完整历史续传均受检查，详见[上下文与客户端策略](docs/cursor-context-limits.md)。
 - 支持标准 function tools、`tool_choice`、多工具调用、assistant `tool_calls` 历史和 tool 结果续轮；工具目录通过 Cursor 原生 `mcp_tools` 注册，结果转换为 OpenAI 兼容 `tool_calls`。
 - 支持 Cursor 在工具调用前重新查询 MCP 工具目录：仅返回当前请求已提供的工具定义和参数 schema，不启动 MCP 服务、不读取网关文件，也不代替客户端执行工具。
 - 支持 `image_url` / `input_image` 内联 data URL，以及 `file` / `input_file` 的图片或 UTF-8 文本附件；图片和文件通过 Cursor 原生 `selected_context` 发送，tool 结果中的图片也能随续轮送达。
